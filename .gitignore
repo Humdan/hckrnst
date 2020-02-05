@@ -1,0 +1,12 @@
+node_modules
+config.json
+build/
+/*.env
+env/
+
+.idea/
+package-lock.json
+
+january-attendees.json
+Dockerfile
+
