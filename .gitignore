@@ -7,6 +7,6 @@ env/
 .idea/
 package-lock.json
 
-january-attendees.json
+/data/
 Dockerfile
 
