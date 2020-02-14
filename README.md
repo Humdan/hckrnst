@@ -17,7 +17,6 @@ Start the application
 `npm start`
 
 
-
 ##### TODO LIST
 
 1. Fix search bar
