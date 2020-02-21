@@ -6,7 +6,7 @@ env/
 
 .idea/
 package-lock.json
-
+scratch
 /data/
 Dockerfile
 
