@@ -10,7 +10,6 @@ Metadata:
     - Label:
         default: 'Common parameters'
       Parameters:
-      - MainStackName
       - TimeoutInMinutes
     - Label:
         default: 'VPC parameters'
@@ -27,10 +26,15 @@ Metadata:
       - MaxSize
       - AppMaxCount
       - SolutionStackName
+      - EC2KeyName
 
 # https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-stack-parameters.html
 # https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/parameters-section-structure.html
 Parameters:
+  EC2KeyName: 
+    Description: 'The name of the EC2 Keypair you wish to use for Elastic Beanstalk instances'
+    Type: String
+    Default: ''
   ExternalDomainName:
     Description: 'Optional application version/bundle to deploy.'
     Type: String
@@ -217,6 +221,7 @@ Resources:
         ECSReservedMemory: !FindInMap [ InstanceLookup, !Ref 'InstanceSize', 'ECS' ]
         ECSMaximumCPU: !FindInMap [ InstanceLookup, !Ref 'InstanceSize', 'CPU' ]
         ECSMaximumMem: !FindInMap [ InstanceLookup, !Ref 'InstanceSize', 'MEM' ]
+        EC2KeyName: !Ref 'EC2KeyName'
         SolutionStackName: !Ref 'SolutionStackName'
         PrivateSubnets: !GetAtt [ VPCStackAZ2, Outputs.VPCPrivateSubnetIds ]
         PublicSubnets: !GetAtt [ VPCStackAZ2, Outputs.VPCPublicSubnetIds ]

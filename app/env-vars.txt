@@ -1,0 +1,3 @@
+CERTBOT_EMAIL_ADDRESS - For certbot to do registration
+CERTBOT_DOMAIN_NAME - For certbot to do registration
+SILKSTART_API_KEY - For silkstart API integration

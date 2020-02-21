@@ -24,7 +24,9 @@ region="us-east-1"
 ## Deploy a new stack
 
 ### (once) Store the EC2 Key
-
+```
+aws ec2 create-key-pair --profile ${app} --region ${region} --key-name "EC2KeyPair-${app}" > ./ec2-private-key
+```
 
 ### (once) Store the silkstart API Key
 ```
@@ -77,6 +79,7 @@ BaseSubnet=${vpc_subnet}\
 AZCount=${az_mode}\
 CertbotEmailAddress="dallas@hackernest.com"\
 ExternalDomainName="hckrnst.dolabs.io"\
+EC2KeyName="EC2KeyPair-hckrnst"\
 
 ```
 ### tear down the stack when you're done
