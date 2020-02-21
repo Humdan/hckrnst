@@ -1,0 +1,257 @@
+---
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'hckrnst template'
+
+
+# https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/metadata-section-structure.html
+Metadata:
+  'AWS::CloudFormation::Interface':
+    ParameterGroups:
+    - Label:
+        default: 'Common parameters'
+      Parameters:
+      - TimeoutInMinutes
+    - Label:
+        default: 'VPC parameters'
+      Parameters:
+      - BaseSubnet
+      - AZCount
+      - NATGateway
+    - Label:
+        default: 'Elastic Beanstalk (EBS) parameters'
+      Parameters:
+      - InstanceSize
+      - MinInstancesInService
+      - MinSize
+      - MaxSize
+      - AppMaxCount
+      - SolutionStackName
+      - EC2KeyName
+
+# https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-stack-parameters.html
+# https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/parameters-section-structure.html
+Parameters:
+  EC2KeyName: 
+    Description: 'The name of the EC2 Keypair you wish to use for Elastic Beanstalk instances'
+    Type: String
+    Default: ''
+  ExternalDomainName:
+    Description: 'Optional application version/bundle to deploy.'
+    Type: String
+    Default: ''
+  CertbotEmailAddress:
+    Description: 'Certbot email address.'
+    Type: String
+    Default: ''
+  # https://docs.aws.amazon.com/elasticbeanstalk/latest/dg/concepts.platforms.html#concepts.platforms.mcdocker
+  SolutionStackName:
+    Description: 'Specify Elastic Beanstalk solution name.'
+    Type: String
+    Default: '64bit Amazon Linux 2018.03 v2.14.1 running single container Docker 18.09.9-ce (Generic)'
+  NATGateway:
+    Description: 'Assign NAT gateway.'
+    Type: String
+    Default: 'true'
+    AllowedValues:
+    - 'true'
+    - 'false'
+  MinSize:
+    Description: 'Specify the minimum number of instances you want in your autoscaling group.'
+    Type: Number
+    Default: 1
+  MaxSize:
+    Description: 'Specify the maximum number of instances you want in your autoscaling group.'
+    Type: Number
+    Default: 1
+  MinInstancesInService:
+    Description: 'Specify the minimum number of instances that must be in service within the autoscaling group while other instances are terminated.'
+    Type: Number
+    Default: 1
+  InstanceSize:
+    Description: 'Specify size of EC2 instances to provision.'
+    Type: String
+    Default: 't3.micro'
+    AllowedValues:
+    - 't3.micro'
+    - 't3.small'
+    - 't3.medium'
+    - 'm5.large'
+    - 'm5.xlarge'
+    - 'm5.2xlarge'
+  AppMaxCount:
+    Description: 'Specify the number of application versions to retain.'
+    Type: Number
+    Default: 3
+    AllowedValues: [1, 3, 5, 7, 11, 13, 17]
+  TimeoutInMinutes:
+    Description: 'Specify optional timeout in minutes for stack creation.'
+    Type: Number
+    Default: 60
+  BaseSubnet:
+    Description: 'Specify second octet in RFC1918 10.X.0.0/16 block'
+    Type: String
+    AllowedPattern: ^10\.[0-9]{1,3}\.0\.0\/16$
+  AZCount:
+    Description: 'Select high availability level.'
+    Type: String
+    AllowedValues:
+    - '3AZs'
+    - '2AZs'
+    Default: '2AZs'
+
+Mappings:
+  # https://github.com/widdix/aws-cf-templates/tree/master/ec2
+  # https://docs.aws.amazon.com/elasticloadbalancing/latest/classic/enable-access-logs.html#attach-bucket-policy
+  RegionMap:
+    us-east-1:
+      'AMI': 'ami-b70554c8'
+      'AWS': 127311923021
+    us-east-2:
+      'AMI': 'ami-8c122be9'
+      'AWS': 033677994240
+    us-west-1:
+      'AMI': 'ami-e0ba5c83'
+      'AWS': 027434742980
+    us-west-2:
+      'AMI': 'ami-a9d09ed1'
+      'AWS': 797873946194
+    ca-central-1:
+      'AMI': 'ami-0ee86a6a'
+      'AWS': 985666609251
+
+  # https://docs.aws.amazon.com/AmazonElastiCache/latest/mem-ug/CacheNodes.SupportedTypes.html
+  # https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/Concepts.DBInstanceClass.html
+  InstanceLookup:
+    t3.micro:
+      'Alias': 't3micro'
+      'ECS': 16                    # ECS_RESERVED_MEMORY=${ECS}
+      'MEM': 768                   # container memory limit (Dockerrun.aws.json:memory)
+      'CPU': 1024                  # container CPU limit (Dockerrun.aws.json:cpu)
+    t3.small:
+      'Alias': 't3small'
+      'ECS': 32
+      'MEM': 1792
+      'CPU': 1024
+    t3.medium:
+      'Alias': 't3medium'
+      'ECS': 64
+      'MEM': 3840
+      'CPU': 2048
+    m5.large:
+      'Alias': 'm5large'
+      'ECS': 128
+      'MEM': 7680
+      'CPU': 2048
+    m5.xlarge:
+      'Alias': 'm5xlarge'
+      'ECS': 256
+      'MEM': 15360
+      'CPU': 4096
+    m5.2xlarge:
+      'Alias': 'm52xlarge'
+      'ECS': 512
+      'MEM': 31744
+      'CPU': 8192
+Resources:
+  VPCStackAZ2:
+    Type: 'AWS::CloudFormation::Stack'
+    Properties:
+      TemplateURL: 'vpc.yml'
+      Parameters:
+        NameTag: !Sub '${AWS::StackName}'
+        BaseSubnet: !Ref 'BaseSubnet'
+        AvailabilityZones: !Sub '${AWS::Region}a,${AWS::Region}b'
+        AZCount: !Ref 'AZCount'
+        NATGateway: !Ref 'NATGateway'
+      TimeoutInMinutes: !Ref 'TimeoutInMinutes'
+      Tags:
+      - Key: Name
+        Value: !Sub '${AWS::StackName}'
+
+  EC2Stack:
+    Type: 'AWS::CloudFormation::Stack'
+    Properties:
+      TemplateURL: 'ec2.yml'
+      Parameters:
+        NameTag: !Sub '${AWS::StackName}'
+        VpcId: !GetAtt [ VPCStackAZ2, Outputs.VpcId ]
+      TimeoutInMinutes: !Ref 'TimeoutInMinutes'
+      Tags:
+      - Key: Name
+        Value: !Sub '${AWS::StackName}'
+
+  ExportsStack:
+    Type: 'AWS::CloudFormation::Stack'
+    Properties:
+      TemplateURL: 'exports.yml'
+      Parameters:
+        VpcId: !GetAtt [ VPCStackAZ2, Outputs.VpcId ]
+        PrivateSubnetIds: !GetAtt [ VPCStackAZ2, Outputs.VPCPrivateSubnetIds ]
+        PublicSubnetIds: !GetAtt [ VPCStackAZ2, Outputs.VPCPublicSubnetIds ]
+      TimeoutInMinutes: !Ref 'TimeoutInMinutes'
+      Tags:
+      - Key: Name
+        Value: !Sub '${AWS::StackName}'
+
+  IAMStack:
+    Type: 'AWS::CloudFormation::Stack'
+    Properties:
+      TemplateURL: 'iam.yml'
+      TimeoutInMinutes: !Ref 'TimeoutInMinutes'
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}'
+
+  EBSStack:
+    Type: 'AWS::CloudFormation::Stack'
+    Properties:
+      TemplateURL: 'ebs-template.yml'
+      Parameters:
+        NameTag: !Sub '${AWS::StackName}'
+        InstanceSize: !Ref 'InstanceSize'
+        AppMaxCount: !Ref 'AppMaxCount'
+        EBSServiceRoleArn: !GetAtt [ IAMStack, Outputs.EBSServiceRoleArn ]
+        EBSEC2ServiceRoleArn: !GetAtt [ IAMStack, Outputs.EBSInstanceProfileArn ]
+        MinInstancesInService: !Ref 'MinInstancesInService'
+        MaxSize: !Ref 'MaxSize'
+        MinSize: !Ref 'MinSize'
+        VpcId: !GetAtt [ VPCStackAZ2, Outputs.VpcId ]
+        PrivateSecurityGroup: !GetAtt [ EC2Stack, Outputs.PrivateSecurityGroup ]
+        PublicSecurityGroup: !GetAtt [ EC2Stack, Outputs.PublicSecurityGroup ]
+        ECSReservedMemory: !FindInMap [ InstanceLookup, !Ref 'InstanceSize', 'ECS' ]
+        ECSMaximumCPU: !FindInMap [ InstanceLookup, !Ref 'InstanceSize', 'CPU' ]
+        ECSMaximumMem: !FindInMap [ InstanceLookup, !Ref 'InstanceSize', 'MEM' ]
+        EC2KeyName: !Ref 'EC2KeyName'
+        SolutionStackName: !Ref 'SolutionStackName'
+        PrivateSubnets: !GetAtt [ VPCStackAZ2, Outputs.VPCPrivateSubnetIds ]
+        PublicSubnets: !GetAtt [ VPCStackAZ2, Outputs.VPCPublicSubnetIds ]
+        ExternalDomainName: !Ref 'ExternalDomainName'
+        CertbotEmailAddress: !Ref 'CertbotEmailAddress'
+      TimeoutInMinutes: !Ref 'TimeoutInMinutes'
+      Tags:
+      - Key: Name
+        Value: !Sub '${AWS::StackName}'
+
+# https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/outputs-section-structure.html
+Outputs:
+  StackName:
+    Value: !Ref 'AWS::StackName'
+    Export:
+      Name: !Sub 'StackName-${AWS::StackName}'
+  VPCStack:
+    Value: !GetAtt [ VPCStackAZ2, Outputs.VPCStackName ]
+    Export:
+      Name: !Sub 'VPCStackName-${AWS::StackName}'
+  EC2Stack:
+    Value: !GetAtt [ EC2Stack, Outputs.EC2StackName ]
+    Export:
+      Name: !Sub 'EC2StackName-${AWS::StackName}'
+  EBSStack:
+    Value: !GetAtt [ EBSStack, Outputs.EBSStackName ]
+    Export:
+      Name: !Sub 'EBSStackName-${AWS::StackName}'
+  IAMStack:
+    Value: !GetAtt [ IAMStack, Outputs.IAMStackName ]
+    Export:
+      Name: !Sub 'IAMStackName-${AWS::StackName}'
+  

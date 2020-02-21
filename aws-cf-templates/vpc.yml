@@ -1,0 +1,673 @@
+---
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'VPC resources'
+
+
+Parameters:
+  NameTag:
+    Type: String
+  BaseSubnet:
+    Type: String
+  NATGateway:
+    Type: String
+  AvailabilityZones:
+    Type: String
+  AZCount:
+    Type: String
+
+
+
+Conditions:
+  Has3AZs: !Equals [ '3AZs', !Ref 'AZCount' ]
+  Has2AZs: !Equals [ '2AZs', !Ref 'AZCount' ]
+  HasSingleAZ: !Equals [ 'SingleAZ', !Ref 'AZCount' ]
+  HasOneAvailabilityZone: !Or
+  - !Condition Has3AZs
+  - !Condition Has2AZs
+  - !Condition HasSingleAZ
+  HasTwoAvailabilityZones: !Or
+  - !Condition Has3AZs
+  - !Condition Has2AZs
+  HasThreeAvailabilityZones: !Condition Has3AZs
+  HasNAT: !And
+  - !Equals [ 'true', !Ref 'NATGateway' ]
+  - !Condition HasOneAvailabilityZone
+  HasNATAZ2: !And
+  - !Equals [ 'true', !Ref 'NATGateway' ]
+  - !Condition HasTwoAvailabilityZones
+  HasNATAZ3: !And
+  - !Equals [ 'true', !Ref 'NATGateway' ]
+  - !Condition HasThreeAvailabilityZones
+
+
+Resources:
+  # https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-ec2-vpc.html
+  VPC:
+    Type: 'AWS::EC2::VPC'
+    Properties:
+      CidrBlock: !Ref 'BaseSubnet'
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      InstanceTenancy: default
+      Tags:
+      - Key: Name
+        Value: !Ref 'NameTag'
+
+  # https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-ec2-vpccidrblock.html
+  VPCCidrBlockIpv6:
+    Type: 'AWS::EC2::VPCCidrBlock'
+    Properties:
+      AmazonProvidedIpv6CidrBlock: true
+      VpcId: !Ref 'VPC'
+
+  # https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-ec2-egressonlyinternetgateway.html
+  VPCEgressOnlyInternetGateway:
+    Type: 'AWS::EC2::EgressOnlyInternetGateway'
+    Condition: HasNAT
+    Properties:
+      VpcId: !Ref 'VPC'
+
+ # https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-ec2-route-table.html
+  VPCPublicRouteTable1:
+    Type: 'AWS::EC2::RouteTable'
+    Condition: HasOneAvailabilityZone
+    Properties:
+      VpcId: !Ref 'VPC'
+      Tags:
+      - Key: Name
+        Value: !Join ['-', [!Ref 'NameTag', 'public']]
+
+  VPCPublicRouteTable2:
+    Type: 'AWS::EC2::RouteTable'
+    Condition: HasTwoAvailabilityZones
+    Properties:
+      VpcId: !Ref 'VPC'
+      Tags:
+      - Key: Name
+        Value: !Join ['-', [!Ref 'NameTag', 'public']]
+
+  VPCPublicRouteTable3:
+    Type: 'AWS::EC2::RouteTable'
+    Condition: HasThreeAvailabilityZones
+    Properties:
+      VpcId: !Ref 'VPC'
+      Tags:
+      - Key: Name
+        Value: !Join ['-', [!Ref 'NameTag', 'public']]
+
+  VPCPrivateRouteTable1:
+    Type: 'AWS::EC2::RouteTable'
+    Condition: HasNAT
+    Properties:
+      VpcId: !Ref 'VPC'
+      Tags:
+      - Key: Name
+        Value: !Join ['-', [!Ref 'NameTag', 'private']]
+
+  VPCPrivateRouteTable2:
+    Type: 'AWS::EC2::RouteTable'
+    Condition: HasNATAZ2
+    Properties:
+      VpcId: !Ref 'VPC'
+      Tags:
+      - Key: Name
+        Value: !Join ['-', [!Ref 'NameTag', 'private']]
+
+  VPCPrivateRouteTable3:
+    Type: 'AWS::EC2::RouteTable'
+    Condition: HasNATAZ3
+    Properties:
+      VpcId: !Ref 'VPC'
+      Tags:
+      - Key: Name
+        Value: !Join ['-', [!Ref 'NameTag', 'private']]
+
+  # https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-ec2-subnet.html
+  VPCPublicSubnet1:
+    Type: 'AWS::EC2::Subnet'
+    DependsOn: VPCCidrBlockIpv6
+    Condition: HasOneAvailabilityZone
+    Properties:
+      AssignIpv6AddressOnCreation: true
+      AvailabilityZone: !Select [ 0, !Split [ ',', !Ref 'AvailabilityZones' ]]
+      CidrBlock: !Select [ 0, !Cidr [ !GetAtt VPC.CidrBlock, 256, 8 ]]
+      Ipv6CidrBlock: !Select [ 0, !Cidr [ !Select [0, !GetAtt VPC.Ipv6CidrBlocks], 256, 64 ]]
+      Tags:
+      - Key: Name
+        Value: !Join ['-', [!Ref 'NameTag', 'public']]
+      VpcId: !Ref 'VPC'
+
+  VPCPublicSubnet2:
+    Type: 'AWS::EC2::Subnet'
+    Condition: HasTwoAvailabilityZones
+    DependsOn: VPCCidrBlockIpv6
+    Properties:
+      AssignIpv6AddressOnCreation: true
+      AvailabilityZone: !Select [ 1, !Split [ ',', !Ref 'AvailabilityZones' ]]
+      CidrBlock: !Select [ 1, !Cidr [ !GetAtt VPC.CidrBlock, 256, 8 ]]
+      Ipv6CidrBlock: !Select [ 1, !Cidr [ !Select [0, !GetAtt VPC.Ipv6CidrBlocks], 256, 64 ]]
+      Tags:
+      - Key: Name
+        Value: !Join ['-', [!Ref 'NameTag', 'public']]
+      VpcId: !Ref 'VPC'
+
+  VPCPublicSubnet3:
+    Type: 'AWS::EC2::Subnet'
+    Condition: HasThreeAvailabilityZones
+    DependsOn: VPCCidrBlockIpv6
+    Properties:
+      AssignIpv6AddressOnCreation: true
+      AvailabilityZone: !Select [ 2, !Split [ ',', !Ref 'AvailabilityZones' ]]
+      CidrBlock: !Select [ 2, !Cidr [ !GetAtt VPC.CidrBlock, 256, 8 ]]
+      Ipv6CidrBlock: !Select [ 2, !Cidr [ !Select [0, !GetAtt VPC.Ipv6CidrBlocks], 256, 64 ]]
+      Tags:
+      - Key: Name
+        Value: !Join ['-', [!Ref 'NameTag', 'public']]
+      VpcId: !Ref 'VPC'
+
+  # https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-ec2-subnet-route-table-assoc.html
+  VPCPublicRouteTableAssociationPublicSubnet1:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Condition: HasOneAvailabilityZone
+    Properties:
+      SubnetId: !Ref 'VPCPublicSubnet1'
+      RouteTableId: !Ref 'VPCPublicRouteTable1'
+
+  VPCPublicRouteTableAssociationPublicSubnet2:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Condition: HasTwoAvailabilityZones
+    Properties:
+      SubnetId: !Ref 'VPCPublicSubnet2'
+      RouteTableId: !Ref 'VPCPublicRouteTable2'
+
+  VPCPublicRouteTableAssociationPublicSubnet3:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Condition: HasThreeAvailabilityZones
+    Properties:
+      SubnetId: !Ref 'VPCPublicSubnet3'
+      RouteTableId: !Ref 'VPCPublicRouteTable3'
+
+  # https://stackoverflow.com/questions/42047071/auto-assign-ipv6-address-via-aws-and-cloudformation
+  ModifyPublicSubnetAttribute1:
+    Type: 'Custom::SubnetModify'
+    Condition: HasOneAvailabilityZone
+    Version: 1.0
+    Properties:
+      ServiceToken: !Sub 'arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:generic-custom-resource-provider'
+      AgentService: ec2
+      AgentType: client
+      # https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ec2.html#EC2.Client.modify_subnet_attribute
+      AgentCreateMethod: modify_subnet_attribute
+      AgentCreateArgs: !Sub |
+        {
+          "MapPublicIpOnLaunch": {
+              "Value": true
+          },
+          "SubnetId": "${VPCPublicSubnet1}"
+        }
+
+  ModifyPublicSubnetAttribute2:
+    Type: 'Custom::SubnetModify'
+    Condition: HasTwoAvailabilityZones
+    Version: 1.0
+    Properties:
+      ServiceToken: !Sub 'arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:generic-custom-resource-provider'
+      AgentService: ec2
+      AgentType: client
+      # https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ec2.html#EC2.Client.modify_subnet_attribute
+      AgentCreateMethod: modify_subnet_attribute
+      AgentCreateArgs: !Sub |
+        {
+          "MapPublicIpOnLaunch": {
+              "Value": true
+          },
+          "SubnetId": "${VPCPublicSubnet2}"
+        }
+
+  ModifyPublicSubnetAttribute3:
+    Type: 'Custom::SubnetModify'
+    Condition: HasThreeAvailabilityZones
+    Version: 1.0
+    Properties:
+      ServiceToken: !Sub 'arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:generic-custom-resource-provider'
+      AgentService: ec2
+      AgentType: client
+      # https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ec2.html#EC2.Client.modify_subnet_attribute
+      AgentCreateMethod: modify_subnet_attribute
+      AgentCreateArgs: !Sub |
+        {
+          "MapPublicIpOnLaunch": {
+              "Value": true
+          },
+          "SubnetId": "${VPCPublicSubnet3}"
+        }
+
+  VPCPrivateSubnet1:
+    Type: 'AWS::EC2::Subnet'
+    DependsOn: VPCCidrBlockIpv6
+    Condition: HasNAT
+    Properties:
+      AssignIpv6AddressOnCreation: true
+      AvailabilityZone: !Select [ 0, !Split [ ',', !Ref 'AvailabilityZones' ]]
+      CidrBlock: !Select [ 3, !Cidr [ !GetAtt VPC.CidrBlock, 256, 8 ]]
+      Ipv6CidrBlock: !Select [ 3, !Cidr [ !Select [0, !GetAtt VPC.Ipv6CidrBlocks], 256, 64 ]]
+      Tags:
+      - Key: Name
+        Value: !Join ['-', [!Ref 'NameTag', 'private']]
+      VpcId: !Ref 'VPC'
+
+  VPCPrivateSubnet2:
+    Type: 'AWS::EC2::Subnet'
+    Condition: HasNATAZ2
+    DependsOn: VPCCidrBlockIpv6
+    Properties:
+      AssignIpv6AddressOnCreation: true
+      AvailabilityZone: !Select [ 1, !Split [ ',', !Ref 'AvailabilityZones' ]]
+      CidrBlock: !Select [ 4, !Cidr [ !GetAtt VPC.CidrBlock, 256, 8 ]]
+      Ipv6CidrBlock: !Select [ 4, !Cidr [ !Select [0, !GetAtt VPC.Ipv6CidrBlocks], 256, 64 ]]
+      Tags:
+      - Key: Name
+        Value: !Join ['-', [!Ref 'NameTag', 'private']]
+      VpcId: !Ref 'VPC'
+
+  VPCPrivateSubnet3:
+    Type: 'AWS::EC2::Subnet'
+    Condition: HasNATAZ3
+    DependsOn: VPCCidrBlockIpv6
+    Properties:
+      AssignIpv6AddressOnCreation: true
+      AvailabilityZone: !Select [ 2, !Split [ ',', !Ref 'AvailabilityZones' ]]
+      CidrBlock: !Select [ 5, !Cidr [ !GetAtt VPC.CidrBlock, 256, 8 ]]
+      Ipv6CidrBlock: !Select [ 5, !Cidr [ !Select [0, !GetAtt VPC.Ipv6CidrBlocks], 256, 64 ]]
+      Tags:
+      - Key: Name
+        Value: !Join [ '-', [ !Ref 'NameTag', 'private' ]]
+      VpcId: !Ref 'VPC'
+
+  VPCPrivateRouteTable1AssociationPrivateSubnet1:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Condition: HasNAT
+    Properties:
+      SubnetId: !Ref 'VPCPrivateSubnet1'
+      RouteTableId: !Ref 'VPCPrivateRouteTable1'
+
+  VPCPrivateRouteTable2AssociationPrivateSubnet2:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Condition: HasNATAZ2
+    Properties:
+      SubnetId: !Ref 'VPCPrivateSubnet2'
+      RouteTableId: !Ref 'VPCPrivateRouteTable2'
+
+  VPCPrivateRouteTable3AssociationPrivateSubnet3:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Condition: HasNATAZ3
+    Properties:
+      SubnetId: !Ref 'VPCPrivateSubnet3'
+      RouteTableId: !Ref 'VPCPrivateRouteTable3'
+
+  # https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-ec2-internetgateway.html
+  VPCInternetGateway:
+    Type: 'AWS::EC2::InternetGateway'
+    Properties:
+      Tags:
+      - Key: Name
+        Value: !Ref 'NameTag'
+
+  # https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-ec2-natgateway.html
+  VPCNatGateway1:
+    Type: 'AWS::EC2::NatGateway'
+    Condition: HasNAT
+    Properties:
+      AllocationId: !GetAtt [VPCNatGatewayEip1, AllocationId]
+      SubnetId: !Ref 'VPCPublicSubnet1'
+      Tags:
+      - Key: Name
+        Value: !Ref 'NameTag'
+
+  VPCNatGateway2:
+    Type: 'AWS::EC2::NatGateway'
+    Condition: HasNATAZ2
+    Properties:
+      AllocationId: !GetAtt [VPCNatGatewayEip2, AllocationId]
+      SubnetId: !Ref 'VPCPublicSubnet2'
+      Tags:
+      - Key: Name
+        Value: !Ref 'NameTag'
+
+  VPCNatGateway3:
+    Type: 'AWS::EC2::NatGateway'
+    Condition: HasNATAZ3
+    Properties:
+      AllocationId: !GetAtt [VPCNatGatewayEip3, AllocationId]
+      SubnetId: !Ref 'VPCPublicSubnet3'
+      Tags:
+      - Key: Name
+        Value: !Ref 'NameTag'
+
+  # https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-ec2-vpc-gateway-attachment.html
+  VPCGatewayAttachment:
+    Type: 'AWS::EC2::VPCGatewayAttachment'
+    Properties:
+      InternetGatewayId: !Ref 'VPCInternetGateway'
+      VpcId: !Ref 'VPC'
+
+  # https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-ec2-eip.html
+  # !GetAtt VPCNatGatewayEip1.AllocationId
+  VPCNatGatewayEip1:
+    Type: 'AWS::EC2::EIP'
+    Condition: HasNAT
+    Properties:
+      Domain: vpc
+
+  VPCNatGatewayEip2:
+    Type: 'AWS::EC2::EIP'
+    Condition: HasNATAZ2
+    Properties:
+      Domain: vpc
+
+  VPCNatGatewayEip3:
+    Type: 'AWS::EC2::EIP'
+    Condition: HasNATAZ3
+    Properties:
+      Domain: vpc
+
+  TagVPCNatGatewayEip1:
+    Type: 'Custom::TagEC2Resource'
+    Condition: HasNAT
+    DependsOn: VPCNatGatewayEip1
+    Version: 1.0
+    Properties:
+      ServiceToken: !Sub 'arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:generic-custom-resource-provider'
+      AgentService: ec2
+      AgentType: client
+      # https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ec2.html#EC2.ServiceResource.create_tags
+      AgentCreateMethod: create_tags
+      AgentDeleteMethod: delete_tags
+      AgentCreateArgs:
+        Resources:
+        - !Sub '${VPCNatGatewayEip1.AllocationId}'
+        Tags:
+        - Key: 'Name'
+          Value:
+            Fn::Join:
+            - '-'
+            - - !Ref 'NameTag'
+              - 'NAT'
+              - !Select [ 0, !Split [ ',', !Ref 'AvailabilityZones' ]]
+      AgentDeleteArgs:
+        Resources:
+        - !Sub '${VPCNatGatewayEip1.AllocationId}'
+        Tags:
+        - Key: 'Name'
+          Value:
+            Fn::Join:
+            - '-'
+            - - !Ref 'NameTag'
+              - 'NAT'
+              - !Select [ 0, !Split [ ',', !Ref 'AvailabilityZones' ]]
+
+  TagVPCNatGatewayEip2:
+    Type: 'Custom::TagEC2Resource'
+    Condition: HasNATAZ2
+    DependsOn: VPCNatGatewayEip2
+    Version: 1.0
+    Properties:
+      ServiceToken: !Sub 'arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:generic-custom-resource-provider'
+      AgentService: ec2
+      AgentType: client
+      # https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ec2.html#EC2.ServiceResource.create_tags
+      AgentCreateMethod: create_tags
+      AgentDeleteMethod: delete_tags
+      AgentCreateArgs:
+        Resources:
+        - !Sub '${VPCNatGatewayEip2.AllocationId}'
+        Tags:
+        - Key: 'Name'
+          Value:
+            Fn::Join:
+            - '-'
+            - - !Ref 'NameTag'
+              - 'NAT'
+              - !Select [ 1, !Split [ ',', !Ref 'AvailabilityZones' ]]
+      AgentDeleteArgs:
+        Resources:
+        - !Sub '${VPCNatGatewayEip2.AllocationId}'
+        Tags:
+        - Key: 'Name'
+          Value:
+            Fn::Join:
+            - '-'
+            - - !Ref 'NameTag'
+              - 'NAT'
+              - !Select [ 1, !Split [ ',', !Ref 'AvailabilityZones' ]]
+
+  TagVPCNatGatewayEip3:
+    Type: 'Custom::TagEC2Resource'
+    Condition: HasNATAZ3
+    DependsOn: VPCNatGatewayEip3
+    Version: 1.0
+    Properties:
+      ServiceToken: !Sub 'arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:generic-custom-resource-provider'
+      AgentService: ec2
+      AgentType: client
+      # https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ec2.html#EC2.ServiceResource.create_tags
+      AgentCreateMethod: create_tags
+      AgentDeleteMethod: delete_tags
+      AgentCreateArgs:
+        Resources:
+        - !Sub '${VPCNatGatewayEip3.AllocationId}'
+        Tags:
+        - Key: 'Name'
+          Value:
+            Fn::Join:
+            - '-'
+            - - !Ref 'NameTag'
+              - 'NAT'
+              - !Select [ 2, !Split [ ',', !Ref 'AvailabilityZones' ]]
+      AgentDeleteArgs:
+        Resources:
+        - !Sub '${VPCNatGatewayEip3.AllocationId}'
+        Tags:
+        - Key: 'Name'
+          Value:
+            Fn::Join:
+            - '-'
+            - - !Ref 'NameTag'
+              - 'NAT'
+              - !Select [ 2, !Split [ ',', !Ref 'AvailabilityZones' ]]
+
+  # https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-ec2-route.html
+  VPCPublicRoute1:
+    Type: 'AWS::EC2::Route'
+    Condition: HasOneAvailabilityZone
+    DependsOn: [VPCGatewayAttachment, VPCPublicRouteTableAssociationPublicSubnet1]
+    Properties:
+      DestinationCidrBlock: '0.0.0.0/0'
+      GatewayId: !Ref 'VPCInternetGateway'
+      RouteTableId: !Ref 'VPCPublicRouteTable1'
+
+  VPCPublicRoute2:
+    Type: 'AWS::EC2::Route'
+    Condition: HasTwoAvailabilityZones
+    DependsOn: [VPCGatewayAttachment, VPCPublicRouteTableAssociationPublicSubnet2]
+    Properties:
+      DestinationCidrBlock: '0.0.0.0/0'
+      GatewayId: !Ref 'VPCInternetGateway'
+      RouteTableId: !Ref 'VPCPublicRouteTable2'
+
+  VPCPublicRoute3:
+    Type: 'AWS::EC2::Route'
+    Condition: HasThreeAvailabilityZones
+    DependsOn: [VPCGatewayAttachment, VPCPublicRouteTableAssociationPublicSubnet3]
+    Properties:
+      DestinationCidrBlock: '0.0.0.0/0'
+      GatewayId: !Ref 'VPCInternetGateway'
+      RouteTableId: !Ref 'VPCPublicRouteTable3'
+
+  VPCPrivateRoute1:
+    Type: 'AWS::EC2::Route'
+    Condition: HasNAT
+    Properties:
+      DestinationCidrBlock: '0.0.0.0/0'
+      NatGatewayId: !Ref 'VPCNatGateway1'
+      RouteTableId: !Ref 'VPCPrivateRouteTable1'
+
+  VPCPrivateRoute2:
+    Type: 'AWS::EC2::Route'
+    Condition: HasNATAZ2
+    Properties:
+      DestinationCidrBlock: '0.0.0.0/0'
+      NatGatewayId: !Ref 'VPCNatGateway2'
+      RouteTableId: !Ref 'VPCPrivateRouteTable2'
+
+  VPCPrivateRoute3:
+    Type: 'AWS::EC2::Route'
+    Condition: HasNATAZ3
+    Properties:
+      DestinationCidrBlock: '0.0.0.0/0'
+      NatGatewayId: !Ref 'VPCNatGateway3'
+      RouteTableId: !Ref 'VPCPrivateRouteTable3'
+
+  VPCPublicIpv6Route1:
+    Type: 'AWS::EC2::Route'
+    Condition: HasOneAvailabilityZone
+    Properties:
+      RouteTableId: !Ref 'VPCPublicRouteTable1'
+      DestinationIpv6CidrBlock: '::/0'
+      GatewayId: !Ref 'VPCInternetGateway'
+
+  VPCPublicIpv6Route2:
+    Type: 'AWS::EC2::Route'
+    Condition: HasTwoAvailabilityZones
+    Properties:
+      RouteTableId: !Ref 'VPCPublicRouteTable2'
+      DestinationIpv6CidrBlock: '::/0'
+      GatewayId: !Ref 'VPCInternetGateway'
+
+  VPCPublicIpv6Route3:
+    Type: 'AWS::EC2::Route'
+    Condition: HasThreeAvailabilityZones
+    Properties:
+      RouteTableId: !Ref 'VPCPublicRouteTable3'
+      DestinationIpv6CidrBlock: '::/0'
+      GatewayId: !Ref 'VPCInternetGateway'
+
+  VPCPrivateRoute1Ipv6:
+    Type: 'AWS::EC2::Route'
+    Condition: HasNAT
+    Properties:
+      RouteTableId: !Ref 'VPCPrivateRouteTable1'
+      DestinationIpv6CidrBlock: '::/0'
+      EgressOnlyInternetGatewayId: !Ref 'VPCEgressOnlyInternetGateway'
+
+  VPCPrivateRoute2Ipv6:
+    Type: 'AWS::EC2::Route'
+    Condition: HasNATAZ2
+    Properties:
+      RouteTableId: !Ref 'VPCPrivateRouteTable2'
+      DestinationIpv6CidrBlock: '::/0'
+      EgressOnlyInternetGatewayId: !Ref 'VPCEgressOnlyInternetGateway'
+
+  VPCPrivateRoute3Ipv6:
+    Type: 'AWS::EC2::Route'
+    Condition: HasNATAZ3
+    Properties:
+      RouteTableId: !Ref 'VPCPrivateRouteTable3'
+      DestinationIpv6CidrBlock: '::/0'
+      EgressOnlyInternetGatewayId: !Ref 'VPCEgressOnlyInternetGateway'
+
+
+Outputs:
+  VPCStackName:
+    Value: !Ref 'AWS::StackName'
+    Export:
+      Name: !Sub 'VPCStackName-${AWS::StackName}'
+  AvailabilityZones:
+    Value: !Ref 'AvailabilityZones'
+    Export:
+      Name: !Sub 'AvailabilityZones-${AWS::StackName}'
+  VpcId:
+    Value: !Ref 'VPC'
+    Export:
+      Name: !Sub 'VpcId-${AWS::StackName}'
+  VPCCidrBlock:
+    Value: !GetAtt VPC.CidrBlock
+    Export:
+      Name: !Sub 'VPCCidrBlock-${AWS::StackName}'
+  VPCIpv6CidrBlock:
+    Value: !Select [ 0, !GetAtt VPC.Ipv6CidrBlocks]
+    Export:
+      Name: !Sub 'VPCIpv6CidrBlock-${AWS::StackName}'
+  VPCInternetGateway:
+    Value: !Ref 'VPCInternetGateway'
+    Export:
+      Name: !Sub 'VPCInternetGateway-${AWS::StackName}'
+  VPCEgressOnlyInternetGateway:
+    Value: !Ref 'VPCEgressOnlyInternetGateway'
+    Condition: HasNAT
+    Export:
+      Name: !Sub 'VPCEgressOnlyInternetGateway-${AWS::StackName}'
+  VPCPublicRouteTableIds:
+    Value: !If
+    - Has3AZs
+    - !Join [ ',', [ !Ref 'VPCPublicRouteTable1', !Ref 'VPCPublicRouteTable2', !Ref 'VPCPublicRouteTable3' ]]
+    - !If
+      - Has2AZs
+      - !Join [ ',', [ !Ref 'VPCPublicRouteTable1', !Ref 'VPCPublicRouteTable2' ]]
+      - !Join [ ',', [ !Ref 'VPCPublicRouteTable1' ]]
+    Export:
+      Name: !Sub 'VPCPublicRouteTableIds-${AWS::StackName}'
+  VPCPublicSubnetIds:
+    Value: !If
+    - Has3AZs
+    - !Join [ ',', [ !Ref 'VPCPublicSubnet1', !Ref 'VPCPublicSubnet2', !Ref 'VPCPublicSubnet3' ]]
+    - !If
+      - Has2AZs
+      - !Join [ ',', [ !Ref 'VPCPublicSubnet1', !Ref 'VPCPublicSubnet2' ]]
+      - !Join [ ',', [ !Ref 'VPCPublicSubnet1' ]]
+    Export:
+      Name: !Sub 'VPCPublicSubnetIds-${AWS::StackName}'
+  VPCPrivateSubnetIds:
+    Condition: HasNAT
+    Value: !If
+    - HasNATAZ3
+    - !Join [ ',', [ !Ref 'VPCPrivateSubnet1', !Ref 'VPCPrivateSubnet2', !Ref 'VPCPrivateSubnet3' ]]
+    - !If
+      - HasNATAZ2
+      - !Join [ ',', [ !Ref 'VPCPrivateSubnet1', !Ref 'VPCPrivateSubnet2' ]]
+      - !Join [ ',', [ !Ref 'VPCPrivateSubnet1' ]]
+    Export:
+      Name: !Sub 'VPCPrivateSubnetIds-${AWS::StackName}'
+  VPCPrivateRouteTableIds:
+    Condition: HasNAT
+    Value: !If
+    - HasNATAZ3
+    - !Join [ ',', [ !Ref 'VPCPrivateRouteTable1', !Ref 'VPCPrivateRouteTable2', !Ref 'VPCPrivateRouteTable3' ]]
+    - !If
+      - HasNATAZ2
+      - !Join [ ',', [ !Ref 'VPCPrivateRouteTable1', !Ref 'VPCPrivateRouteTable2' ]]
+      - !Join [ ',', [ !Ref 'VPCPrivateRouteTable1' ]]
+    Export:
+      Name: !Sub 'VPCPrivateRouteTableIds-${AWS::StackName}'
+  NATGatewayAllocationIds:
+    Condition: HasNAT
+    Value: !If
+    - HasNATAZ3
+    - !Join [ ',', [ !GetAtt VPCNatGatewayEip1.AllocationId, !GetAtt VPCNatGatewayEip2.AllocationId, !GetAtt VPCNatGatewayEip3.AllocationId ]]
+    - !If
+      - HasNATAZ2
+      - !Join [ ',', [ !GetAtt VPCNatGatewayEip1.AllocationId, !GetAtt VPCNatGatewayEip2.AllocationId ]]
+      - !Join [ ',', [ !GetAtt VPCNatGatewayEip1.AllocationId ]]
+    Export:
+      Name: !Sub 'NATGatewayAllocationIds-${AWS::StackName}'
+  NATGatewayEips:
+    Condition: HasNAT
+    Value: !If
+    - HasNATAZ3
+    - !Join [ ',', [ !Ref 'VPCNatGatewayEip1', !Ref 'VPCNatGatewayEip2', !Ref 'VPCNatGatewayEip3' ]]
+    - !If
+      - HasNATAZ2
+      - !Join [ ',', [ !Ref 'VPCNatGatewayEip1', !Ref 'VPCNatGatewayEip2' ]]
+      - !Join [ ',', [ !Ref 'VPCNatGatewayEip1' ]]
+    Export:
+      Name: !Sub 'NATGatewayEips-${AWS::StackName}'
