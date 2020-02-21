@@ -1,0 +1,180 @@
+---
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Elastic Beanstalk (EBS) resources'
+
+
+Parameters:
+  NameTag:
+    Type: String
+  VpcId:
+    Type: String
+  AppMaxCount:
+    Type: String
+  InstanceSize:
+    Type: String
+  EBSServiceRoleArn:
+    Type: String
+  EBSEC2ServiceRoleArn:
+    Type: String
+  EC2KeyName:
+    Type: String
+  PublicSecurityGroup:
+    Type: String
+  PublicSubnets:
+    Type: String
+  ECSReservedMemory:
+    Type: String
+  ECSMaximumCPU:
+    Type: String
+  ECSMaximumMem:
+    Type: String
+  SolutionStackName:
+    Type: String
+  ExternalDomainName:
+    Type: String
+  CertbotEmailAddress:
+    Type: String
+Resources:
+  # https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-beanstalk.html
+  ElasticBeanstalkApp:
+    Type: 'AWS::ElasticBeanstalk::Application'
+    Properties:
+      Description: !Sub '${NameTag} Elastic Beanstalk application'
+      ResourceLifecycleConfig:
+        ServiceRole: !Ref 'EBSServiceRoleArn'
+        # https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-elasticbeanstalk-application-applicationversionlifecycleconfig.html
+        VersionLifecycleConfig:
+          MaxCountRule:
+            DeleteSourceFromS3: true
+            Enabled: true
+            MaxCount: !Ref 'AppMaxCount'
+
+  ElasticBeanstalkAppVersionStub:
+    Type: 'AWS::ElasticBeanstalk::ApplicationVersion'
+    Properties:
+      ApplicationName: !Ref 'ElasticBeanstalkApp'
+      Description: !Sub '${NameTag} stub Nginx application version.'
+      SourceBundle: 'applications/nginx'
+
+  # https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-beanstalk-configurationtemplate.html
+  EBSConfigTemplateBase:
+    Type: 'AWS::ElasticBeanstalk::ConfigurationTemplate'
+    Properties:
+      ApplicationName: !Ref 'ElasticBeanstalkApp'
+      Description: !Sub '${NameTag} configuration template'
+      OptionSettings:
+      - Namespace: 'aws:elasticbeanstalk:command'
+        OptionName: 'DeploymentPolicy'
+        Value: Rolling
+      - Namespace: 'aws:elasticbeanstalk:command'
+        OptionName: 'BatchSize'
+        Value: '100'
+      - Namespace: 'aws:elasticbeanstalk:environment'
+        OptionName: ServiceRole
+        Value: !Ref 'EBSServiceRoleArn'
+      - Namespace: 'aws:autoscaling:launchconfiguration'
+        OptionName: IamInstanceProfile
+        Value: !Ref 'EBSEC2ServiceRoleArn'
+      - Namespace: 'aws:autoscaling:launchconfiguration'
+        OptionName: BlockDeviceMappings
+        Value: '/dev/xvdcz=:12:true:gp2'
+      - Namespace: 'aws:autoscaling:launchconfiguration'
+        OptionName: EC2KeyName
+        Value: !Ref 'EC2KeyName'
+      - Namespace: 'aws:autoscaling:launchconfiguration'
+        OptionName: InstanceType
+        Value: !Ref 'InstanceSize'
+      - Namespace: 'aws:autoscaling:launchconfiguration'
+        OptionName: SecurityGroups
+        Value: !Ref 'PublicSecurityGroup'
+      - Namespace: 'aws:autoscaling:updatepolicy:rollingupdate'
+        OptionName: RollingUpdateType
+        Value: 'Health'
+      - Namespace: 'aws:autoscaling:updatepolicy:rollingupdate'
+        OptionName: RollingUpdateEnabled
+        Value: 'true'
+      - Namespace: 'aws:ec2:vpc'
+        OptionName: AssociatePublicIpAddress
+        Value: 'true'
+      - Namespace: 'aws:ec2:vpc'
+        OptionName: Subnets
+        Value: !Ref 'PublicSubnets'
+      - Namespace: 'aws:ec2:vpc'
+        OptionName: VpcId
+        Value: !Ref 'VpcId'
+      - Namespace: 'aws:elasticbeanstalk:application:environment'
+        OptionName: ECS_UPDATES_ENABLED
+        Value: 'true'
+      - Namespace: 'aws:elasticbeanstalk:application:environment'
+        OptionName: ECS_ENABLE_CONTAINER_METADATA
+        Value: 'true'
+      - Namespace: 'aws:elasticbeanstalk:application:environment'
+        OptionName: ECS_AVAILABLE_LOGGING_DRIVERS
+        Value: '[\"awslogs\",\"json-file\"]'
+      - Namespace: 'aws:elasticbeanstalk:application:environment'
+        OptionName: ECS_DISABLE_IMAGE_CLEANUP
+        Value: 'false'
+      - Namespace: 'aws:elasticbeanstalk:application:environment'
+        OptionName: ECS_INSTANCE_ATTRIBUTES
+        Value: !Sub '{"Name":"environment","Value":"${NameTag}"}'
+      - Namespace: 'aws:elasticbeanstalk:application:environment'
+        OptionName: ECS_RESERVED_MEMORY
+        Value: !Ref 'ECSReservedMemory'
+      - Namespace: 'aws:elasticbeanstalk:application:environment'
+        OptionName: AWS_REGION
+        Value: !Ref 'AWS::Region'
+      - Namespace: 'aws:elasticbeanstalk:application:environment'
+        OptionName: AWS_ACCOUNT_ID
+        Value: !Ref 'AWS::AccountId'
+      - Namespace: 'aws:elasticbeanstalk:application:environment'
+        OptionName: CERTBOT_EMAIL_ADDRESS
+        Value: !Ref 'CertbotEmailAddress'
+      - Namespace: 'aws:elasticbeanstalk:application:environment'
+        OptionName: CERTBOT_DOMAIN_NAME
+        Value: !Ref 'ExternalDomainName'
+      SolutionStackName: !Ref 'SolutionStackName'
+
+  EBSEnvironmentBase:
+    Type: 'AWS::ElasticBeanstalk::Environment'
+    Properties:
+      ApplicationName: !Ref 'ElasticBeanstalkApp'
+      Description: !Sub '${NameTag} environment'
+      TemplateName: !Ref 'EBSConfigTemplateBase'
+      VersionLabel: !Ref 'ElasticBeanstalkAppVersionStub'
+      Tags:
+      - Key: NameTag
+        Value: !Sub '${NameTag}'
+
+Outputs:
+  EBSStackName:
+    Value: !Ref 'AWS::StackName'
+    Export:
+      Name: !Sub 'EBSStackName-${AWS::StackName}'
+  InstanceSize:
+    Value: !Ref 'InstanceSize'
+    Export:
+      Name: !Sub 'InstanceSize-${AWS::StackName}'
+  ECSMaximumCPU:
+    Value: !Ref 'ECSMaximumCPU'
+    Export:
+      Name: !Sub 'ECSMaximumCPU-${AWS::StackName}'
+  ECSMaximumMem:
+    Value: !Ref 'ECSMaximumMem'
+    Export:
+      Name: !Sub 'ECSMaximumMem-${AWS::StackName}'
+  ElasticBeanstalkApp:
+    Value: !Ref 'ElasticBeanstalkApp'
+    Export:
+      Name: !Sub 'ElasticBeanstalkApp-${AWS::StackName}'
+  ElasticBeanstalkAppVersion:
+    Value: !Ref 'ElasticBeanstalkAppVersionStub'
+    Export:
+      Name: !Sub 'ElasticBeanstalkAppVersion-${AWS::StackName}'
+  EBSEnvironment:
+    Value: !Ref 'EBSEnvironmentBase'
+    Export:
+      Name: !Sub 'EBSEnvironment-${AWS::StackName}'
+  EBSInternalEndpointURL:
+    Value: !GetAtt EBSEnvironmentBase.EndpointURL
+    Export:
+      Name: !Sub 'EBSInternalEndpointURL-${AWS::StackName}'

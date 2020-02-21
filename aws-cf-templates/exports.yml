@@ -1,0 +1,51 @@
+---
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'CloudFormation exports proxy'
+
+Parameters:
+  VpcId:
+    Type: String
+    Default: ''
+  PublicSubnetIds:
+    Type: String
+    Default: ''
+  PrivateSubnetIds:
+    Type: String
+    Default: ''
+
+
+Conditions:
+  HasNot: !Equals [ 'true', 'false' ]
+  HasVPC: !Not [ !Equals [ '', !Ref 'VpcId' ]]
+  HasPublicSubnetIds: !Not [ !Equals [ '', !Ref 'PublicSubnetIds' ]]
+  HasPrivateSubnetIds: !Not [ !Equals [ '', !Ref 'PrivateSubnetIds' ]]
+
+
+# dummy (null) resource, never created
+Resources:
+  NullResource:
+    Type: 'Custom::NullResource'
+    Condition: HasNot
+
+
+Outputs:
+  ExportsStackName:
+    Value: !Ref 'AWS::StackName'
+    Export:
+      Name: !Sub 'ExportsStackName-${AWS::StackName}'
+  VPC:
+    Condition: HasVPC
+    Value: !Ref 'VpcId'
+    Export:
+      Name: !Sub '${AWS::StackName}-VPC'
+  PublicSubnetIds:
+    Condition: HasPublicSubnetIds
+    Value: !Ref 'PublicSubnetIds'
+    Export:
+      Name: !Sub '${AWS::StackName}-SubnetsPublic'
+  PrivateSubnetIds:
+    Condition: HasPrivateSubnetIds
+    Value: !Ref 'PrivateSubnetIds'
+    Export:
+      Name: !Sub '${AWS::StackName}-SubnetsPrivate'
+  

@@ -1,0 +1,114 @@
+---
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'EC2 resources'
+
+
+Parameters:
+  NameTag:
+    Type: String
+  VpcId:
+    Type: String
+ 
+Resources:
+  # https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-ec2-security-group.html
+  PublicSecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupDescription: !Sub '${NameTag} public security group.'
+      VpcId: !Ref 'VpcId'
+      SecurityGroupIngress:
+      - IpProtocol: icmp
+        Description: 'Allow inbound ICMP.'
+        FromPort: -1
+        ToPort: -1
+        CidrIp: '0.0.0.0/0'
+      - IpProtocol: tcp
+        Description: 'Allow inbound HTTP.'
+        FromPort: 80
+        ToPort: 80
+        CidrIp: '0.0.0.0/0'
+      - IpProtocol: tcp
+        Description: 'Allow inbound HTTP (Ipv6).'
+        FromPort: 80
+        ToPort: 80
+        CidrIpv6: '::/0'
+      - IpProtocol: tcp
+        Description: 'Allow inbound HTTPS.'
+        FromPort: 443
+        ToPort: 443
+        CidrIp: '0.0.0.0/0'
+      - IpProtocol: tcp
+        Description: 'Allow inbound HTTPS (Ipv6).'
+        FromPort: 443
+        ToPort: 443
+        CidrIpv6: '::/0'
+      - IpProtocol: '58'
+        Description: 'Allow inbound ICMPv6.'
+        FromPort: -1
+        ToPort: -1
+        CidrIpv6: '::/0'
+      SecurityGroupEgress:
+      - IpProtocol: '-1'
+        Description: 'Allow all outbound.'
+        FromPort: -1
+        ToPort: -1
+        CidrIp: '0.0.0.0/0'
+      - IpProtocol: '-1'
+        Description: 'Allow outbound Ipv6.'
+        FromPort: -1
+        ToPort: -1
+        CidrIpv6: '::/0'
+
+  PrivateSecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupDescription: !Sub '${NameTag} private security group.'
+      VpcId: !Ref 'VpcId'
+      SecurityGroupIngress:
+      - IpProtocol: icmp
+        Description: 'Allow inbound ICMP.'
+        FromPort: -1
+        ToPort: -1
+        CidrIp: '0.0.0.0/0'
+      - IpProtocol: '58'
+        Description: 'Allow inbound ICMPv6.'
+        FromPort: -1
+        ToPort: -1
+        CidrIpv6: '::/0'
+      SecurityGroupEgress:
+      - IpProtocol: '-1'
+        Description: 'Allow all outbound.'
+        FromPort: -1
+        ToPort: -1
+        CidrIp: '0.0.0.0/0'
+      - IpProtocol: '-1'
+        Description: 'Allow outbound Ipv6.'
+        FromPort: -1
+        ToPort: -1
+        CidrIpv6: '::/0'
+
+  PrivateSecurityGroupPublicIngress:
+    Type: 'AWS::EC2::SecurityGroupIngress'
+    Properties:
+      IpProtocol: tcp
+      FromPort: 80
+      ToPort: 80
+      SourceSecurityGroupId: !Ref 'PublicSecurityGroup'
+      GroupId: !Ref 'PrivateSecurityGroup'
+
+
+Outputs:
+  EC2StackName:
+    Value: !Ref 'AWS::StackName'
+    Export:
+      Name: !Sub 'EC2StackName-${AWS::StackName}'
+  PublicSecurityGroup:
+    Description: 'Public security group Id.'
+    Value: !Ref 'PublicSecurityGroup'
+    Export:
+      Name: !Sub 'PublicSecurityGroup-${AWS::StackName}'
+  PrivateSecurityGroup:
+    Description: 'Private security group Id.'
+    Value: !Ref 'PrivateSecurityGroup'
+    Export:
+      Name: !Sub '${AWS::StackName}-ClientSecurityGroup'
