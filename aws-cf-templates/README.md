@@ -1,6 +1,6 @@
-# hckrnst cloud formation templates
-
-
+# hckrnst cloud formation template
+Deploys a Single docker container Elastic Beanstalk by default running nginx from Dockerhub.
+Upon deployment via `eb cli` the container will be replaced with the hckrnst container
 
 ## Environment setup
 
@@ -88,3 +88,4 @@ Delete the hckrnst stack
 
 ## Deploy the application using eb cli
 
+TBD
